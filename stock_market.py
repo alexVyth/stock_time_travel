@@ -127,7 +127,7 @@ class StockProcess:
 
     def intraday_reverse(self, day):
         # Filter Stocks that cannot be sold
-        # daily = daily[daily['Close'] <= self.income]
+        daily = self.daily[self.daily['Close'] <= self.income]
         # Filter Stocks that give profit
         daily = self.daily[self.daily['Open'] < self.daily['Close']]
         # Calculate daily profits
@@ -192,7 +192,6 @@ class StockProcess:
         date_max = max(self.intr_data['Date'])
         date_max = '1990-03-01'
         while day <= date_max:
-            print(day)
             self.intr_data = self.intr_data[self.intr_data['Date'] >= day]
             self.daily = self.intr_data[self.intr_data['Date'] == day]
 
