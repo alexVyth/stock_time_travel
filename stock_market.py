@@ -16,7 +16,7 @@ class StockProcess:
         self.day_dist = 360
         if size == 'small':
             self.N_limit = 1000
-            self.intraday_par = 1.01
+            self.intraday_par = 1.05
         else:
             self.N_limit = 1000000
             self.intraday_par = 1.01
@@ -51,8 +51,8 @@ class StockProcess:
             # Bypass empty CSVs
             except pd.errors.EmptyDataError:
                 pass
-            if len(stock_data) > 50:
-                break
+            # if len(stock_data) > 50:
+                # break
         # Concat DataFrames into one
         self.data = pd.concat(stock_data, axis=0, ignore_index=True)
 
