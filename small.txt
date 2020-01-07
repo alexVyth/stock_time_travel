@@ -1,1 +1,2 @@
 1970-01-02 buy-open BA 1
+1970-01-02 sell-close BA 1

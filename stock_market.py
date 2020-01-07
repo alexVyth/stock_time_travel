@@ -51,7 +51,7 @@ class StockProcess:
             # Bypass empty CSVs
             except pd.errors.EmptyDataError:
                 pass
-            # if len(stock_data) > 50:
+            # if len(stock_data) > 1000:
                 # break
         # Concat DataFrames into one
         self.data = pd.concat(stock_data, axis=0, ignore_index=True)
@@ -62,6 +62,7 @@ class StockProcess:
         # Delete unused Columns
         del self.data['Volume']
         del self.data['OpenInt']
+        self.data['Year'] = self.data['Date'].str.split('-').str[0]
         self.data.sort_values(by=['Date'])
 
     def buy(self, day, stock, amount, tr_type):   # sell-close -> Close
@@ -127,9 +128,9 @@ class StockProcess:
 
     def intraday_reverse(self, day):
         # Filter Stocks that cannot be sold
-        daily = self.daily[self.daily['Close'] <= self.income]
+        daily = self.daily[self.daily['Stock'].isin(self.owned_l)]
         # Filter Stocks that give profit
-        daily = self.daily[self.daily['Open'] < self.daily['Close']]
+        daily = daily[daily['Open'] > daily['Close']]
         # Calculate daily profits
         daily['Profit'] = daily['Close'] - daily['Open']
         daily['Num'] = np.where(np.floor(self.income / daily['Open'])
@@ -192,6 +193,12 @@ class StockProcess:
         date_max = max(self.intr_data['Date'])
         date_max = '1990-03-01'
         while day <= date_max:
+            if day.split('-')[1] == '01' and day.split('-')[2] == '01':
+                year = day.split('-')[0]
+                self.year_processing(year)
+            print(day)
+            self.owned_l = {k: v for (k, v) in self.owned_stocks.items() if v > 0}
+            self.owned_l = list(self.owned_l.keys())
             self.intr_data = self.intr_data[self.intr_data['Date'] >= day]
             self.daily = self.intr_data[self.intr_data['Date'] == day]
 
@@ -207,6 +214,21 @@ class StockProcess:
             # Move to next day
             day = day + timedelta(1)
             day = str(day.date())
+
+    def year_processing(self, year):
+        self.yearly_trans = []
+        year_data = self.data[self.data['Year'] == year]
+        for stock in self.owned_stocks.keys():
+            stock_data = year_data[year_data['Stock'] == stock]
+            if not stock_data.empty:
+                minim = min(stock_data['Low'])
+                maxim = max(stock_data['High'])
+                if minim * 2 <= maxim:
+                    print(stock,minim,maxim)
+                    trans_info = [stock_data.iloc[0]['Date'],
+                                  stock_data.iloc[0]['Stock']]
+                    self.yearly_trans.append(trans_info)
+        print(self.yearly_trans)
 
     def plot_diagrams(self):
         x = self.dates
