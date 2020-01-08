@@ -17,9 +17,11 @@ class StockProcess:
         if size == 'small':
             self.N_limit = 1000
             self.intraday_par = 1.05
+            self.interday_par = 1.5
         else:
             self.N_limit = 1000000
             self.intraday_par = 1.01
+            self.interday_par = 1.1
         self.N = 0
         self.income = 1
         self.owned_stocks = {}
@@ -51,8 +53,8 @@ class StockProcess:
             # Bypass empty CSVs
             except pd.errors.EmptyDataError:
                 pass
-            # if len(stock_data) > 1000:
-                # break
+            if len(stock_data) > 1000:
+                break
         # Concat DataFrames into one
         self.data = pd.concat(stock_data, axis=0, ignore_index=True)
 
@@ -115,16 +117,15 @@ class StockProcess:
                                 np.floor(self.income / daily['Open']),
                                 np.floor(daily['Limit'] / 2))
         daily['TotalProfit'] = daily['Num'] * daily['Profit']
-        daily = daily[daily['TotalProfit'] + self.income
-                      >= self.intraday_par * self.income]
+        daily = daily[daily['TotalProfit'] + self.portfolio[-1]
+                      >= self.intraday_par * self.portfolio[-1]]
         if daily.shape[0] >= 1:
             trans_info = [daily.iloc[0]['Date'],
                           daily.iloc[0]['Stock'], daily.iloc[0]['Num']]
             self.daily_transactions.append([*trans_info, 'buy-open'])
             self.daily_transactions.append([*trans_info, 'sell-close'])
-            # self.buy(*trans_info, tr_type='buy-open')
-            # self.sell(*trans_info, tr_type='sell-close')
-            print(day, self.income, self.N)
+            self.today_stocks.append(trans_info[1])
+            print(self.today_stocks)
 
     def intraday_reverse(self, day):
         # Filter Stocks that cannot be sold
@@ -145,15 +146,12 @@ class StockProcess:
                           daily.iloc[0]['Stock'], daily.iloc[0]['Num']]
             self.daily_transactions.append([*trans_info, 'buy-open'])
             self.daily_transactions.append([*trans_info, 'sell-close'])
-            print(day, self.income, self.N)
-
-    def non_intraday(self, day):
-        pass
 
     def ordered_transactions(self):
         priority1 = ['buy-open', 'sell-open']
         priority2 = ['buy-low', 'sell-high']
         priority3 = ['buy-close', 'sell-close']
+
         ordered_trans = []
         for trans in self.daily_transactions:
             if trans[3] in priority1:
@@ -165,10 +163,12 @@ class StockProcess:
             if trans[3] in priority3:
                 ordered_trans.append(trans)
         for trans in ordered_trans:
+            print(trans)
             if 'buy' in trans[3]:
                 self.buy(*trans)
             else:
                 self.sell(*trans)
+            print(self.income)
 
     def stats(self, day):
         # Calculate Portfolio per day
@@ -191,21 +191,22 @@ class StockProcess:
         day = min(self.intr_data['Date'])
         day = '1970-01-01'
         date_max = max(self.intr_data['Date'])
-        date_max = '1990-03-01'
+        date_max = '1980-01-01'
         while day <= date_max:
             if day.split('-')[1] == '01' and day.split('-')[2] == '01':
                 year = day.split('-')[0]
                 self.year_processing(year)
-            print(day)
-            self.owned_l = {k: v for (k, v) in self.owned_stocks.items() if v > 0}
+            self.today_stocks = []
+            self.daily_transactions = []
+            owned_ll = self.owned_stocks.items()
+            self.owned_l = {k: v for (k, v) in owned_ll if v > 0}
             self.owned_l = list(self.owned_l.keys())
             self.intr_data = self.intr_data[self.intr_data['Date'] >= day]
             self.daily = self.intr_data[self.intr_data['Date'] == day]
 
-            self.daily_transactions = []
             self.intraday(day)
+            self.check_yearly(day)
             self.intraday_reverse(day)
-            self.non_intraday(day)
             self.ordered_transactions()
             self.stats(day)
 
@@ -222,13 +223,41 @@ class StockProcess:
             stock_data = year_data[year_data['Stock'] == stock]
             if not stock_data.empty:
                 minim = min(stock_data['Low'])
+                stock_low = stock_data[stock_data['Low'] == minim]
+                stock_low = stock_low.iloc[-1]
+                date_min = stock_low['Date']
+                limit_min = stock_low['Limit']
                 maxim = max(stock_data['High'])
-                if minim * 2 <= maxim:
-                    print(stock,minim,maxim)
-                    trans_info = [stock_data.iloc[0]['Date'],
-                                  stock_data.iloc[0]['Stock']]
+                stock_high = stock_data[stock_data['High'] == maxim]
+                stock_high = stock_high.iloc[0]
+                date_max = stock_high['Date']
+                limit_max = stock_high['Limit']
+                if minim * 1.5 <= maxim and date_min < date_max:
+                    limit = min([limit_max, limit_min])
+                    trans_info = [stock, date_min, date_max, minim, maxim,
+                                  limit]
                     self.yearly_trans.append(trans_info)
-        print(self.yearly_trans)
+
+    def check_yearly(self, day):
+        found = False
+        for trans in self.yearly_trans:
+            stock, min_day, max_day, low, high, limit = trans
+            if day == min_day and not found:
+                if low >= self.income or stock in self.today_stocks:
+                    self.yearly_trans.remove(trans)
+                else:
+                    found = True
+                    amount = np.floor(self.income / low)
+                    if amount >= limit:
+                        amount = limit
+                    trans_info = [min_day, stock, amount, 'buy-low']
+                    self.daily_transactions.append(trans_info)
+            elif day == max_day:
+                amount = self.owned_stocks[stock]
+                if amount >= limit:
+                    amount = limit
+                trans_info = [max_day, stock, amount, 'sell-high']
+                self.daily_transactions.append(trans_info)
 
     def plot_diagrams(self):
         x = self.dates
@@ -242,6 +271,7 @@ class StockProcess:
         ax.fill_between(x, 0, y1)
         ax.set(ylabel=labels)
         ax.legend(labels)
+        fig.autofmt_xdate()
         fig.savefig("diagrams.png")
         plt.show()
 
@@ -255,8 +285,8 @@ class StockProcess:
         sequence.load_dataset()
         sequence.preprocessing()
         sequence.day_processing()
-        sequence.plot_diagrams()
         sequence.prepend_to_file()
+        sequence.plot_diagrams()
 
 
 sequence = StockProcess(size='small')
