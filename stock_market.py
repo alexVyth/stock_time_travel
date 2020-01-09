@@ -25,7 +25,7 @@ class TimeTravel:
             self.intraday_par = 1.005
             self.interday_par = 1.05
         self.N = 0
-        self.income = 1
+        self.income = 240000
         self.owned_stocks = {}
 
         self.portfolio = []
@@ -49,7 +49,7 @@ class TimeTravel:
                 stock_data.append(pd.read_csv(stock_dir))
                 # Create Dictionary with owned_stocks
                 stock_data[-1]['Stock'] = stock[:-4]
-                self.owned_stocks[stock[:-4]] = 89
+                self.owned_stocks[stock[:-4]] = 0
             # Bypass empty CSVs
             except pd.errors.EmptyDataError:
                 pass
@@ -147,7 +147,9 @@ class TimeTravel:
                       >= self.intraday_par * self.portfolio[-1]]
 
         # Save transaction information
-        if daily.shape[0] >= 1:
+        stock_list = [x[1] for x in self.daily_transactions]
+        if daily.shape[0] >= 1 and\
+                not(any(daily.iloc[0]['Stock'] == x for x in stock_list)):
             trans_info = [daily.iloc[0]['Date'],
                           daily.iloc[0]['Stock'], daily.iloc[0]['Amount']]
             self.planned += trans_info[-1] * daily.iloc[0]['Open']
@@ -184,7 +186,7 @@ class TimeTravel:
         # Save transaction information
         stock_list = [x[1] for x in self.daily_transactions]
         if daily.shape[0] >= 1 and\
-                not(any(row['Stock'] == x for x in stock_list)):
+                not(any(daily.iloc[0]['Stock'] == x for x in stock_list)):
             trans_info = [daily.iloc[0]['Date'],
                           daily.iloc[0]['Stock'], daily.iloc[0]['Num']]
             self.daily_transactions.append([*trans_info, 'sell-open'])
@@ -282,7 +284,7 @@ class TimeTravel:
     def day_processing(self):
         # Find dataset's min/max day
         day_min = min(self.data['Date'])
-        # day_min = '1972-01-01'
+        day_min = '1972-01-01'
 
         date_max = max(self.data['Date'])
         # date_max = '1972-02-01'
