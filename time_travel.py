@@ -18,14 +18,14 @@ class TimeTravel:
         self.file = size + '.txt'
         if size == 'small':
             self.N_limit = 1000
-            self.intraday_par = 1.05
-            self.interday_par = 1.5
+            self.intraday_par = 1.15
+            self.interday_par = 1.25
         else:
             self.N_limit = 1000000
-            self.intraday_par = 1.005
-            self.interday_par = 1.05
+            self.intraday_par = 1.000001
+            self.interday_par = 1.000002
         self.N = 0
-        self.income = 240000
+        self.income = 1
         self.owned_stocks = {}
 
         self.portfolio = []
@@ -53,21 +53,24 @@ class TimeTravel:
             # Bypass empty CSVs
             except pd.errors.EmptyDataError:
                 pass
-            # if len(stock_data) > 1000:
-                # break
         # Concat DataFrames into one
         self.data = pd.concat(stock_data, axis=0, ignore_index=True)
 
     def preprocessing(self):
         # Create new Column with transaction limit
         self.data['Limit'] = self.data['Volume'] * 0.1
+        self.data['Limit'] = self.data['Limit'].apply(np.floor)
+        self.data.Limit = self.data.Limit.astype('uint32')
         # Delete unused Columns
         del self.data['Volume']
         del self.data['OpenInt']
+        # Manage Date Column
+        self.data['Date'] = pd.to_datetime(self.data['Date'],
+                                           format='%Y-%m-%d')
         # Create Year column for convinience
-        self.data['Year'] = self.data['Date'].str.split('-').str[0]
-        # Finally Sort by date
-        self.data.sort_values(by=['Date'])
+        self.data['Year'] = self.data['Date'].dt.year
+        # Sort by date
+        self.data = self.data.sort_values(by=['Date'])
 
     def buy(self, day, stock, amount, tr_type):
         """ The very-basic function 'buy' for checking/executing buying
@@ -93,7 +96,7 @@ class TimeTravel:
             self.N += 1
             # Save Sequence to file
             out = open(self.file, "a")
-            out.write(f'{day} {tr_type} {stock[:-3].upper()} {int(amount)}\n')
+            out.write(f'{day.strftime("%Y-%m-%d")} {tr_type} {stock[:-3].upper()} {int(amount)}\n')
             out.close()
         else:
             sys.exit('Wrong Transfer')
@@ -121,7 +124,7 @@ class TimeTravel:
             self.N += 1
             # Save Sequence to file
             out = open(self.file, "a")
-            out.write(f'{day} {tr_type} {stock[:-3].upper()} {int(amount)}\n')
+            out.write(f'{day.strftime("%Y-%m-%d")} {tr_type} {stock[:-3].upper()} {int(amount)}\n')
             out.close()
         else:
             sys.exit('Wrong Transfer')
@@ -148,6 +151,8 @@ class TimeTravel:
 
         # Save transaction information
         stock_list = [x[1] for x in self.daily_transactions]
+        # check that transactions exist and do not overlap with
+        # interday transactions
         if daily.shape[0] >= 1 and\
                 not(any(daily.iloc[0]['Stock'] == x for x in stock_list)):
             trans_info = [daily.iloc[0]['Date'],
@@ -185,6 +190,8 @@ class TimeTravel:
 
         # Save transaction information
         stock_list = [x[1] for x in self.daily_transactions]
+        # check that transactions exist and do not overlap with
+        # interday transactions
         if daily.shape[0] >= 1 and\
                 not(any(daily.iloc[0]['Stock'] == x for x in stock_list)):
             trans_info = [daily.iloc[0]['Date'],
@@ -193,14 +200,18 @@ class TimeTravel:
             self.daily_transactions.append([*trans_info, 'buy-close'])
 
     def yearly(self, day):
+        # check the cash limit on current day
         cash_limit = self.income - self.planned
         found = False
+        # find possible transactions on current day
         for trans in self.yearly_trans:
             stock, min_day, max_day, low, high, limit = trans
             if day == min_day and not found:
+                # if cash is not enough delete transaction
                 if low >= cash_limit or stock in self.today_stocks:
                     self.yearly_trans.remove(trans)
                 else:
+                    # save transaction info for buy transactions
                     amount = np.floor(cash_limit / low)
                     if amount >= limit:
                         amount = np.floor(limit)
@@ -218,6 +229,7 @@ class TimeTravel:
                     else:
                         self.yearly_trans.remove(trans)
             elif day == max_day:
+                # save transaction info for save transactions
                 amount = self.owned_stocks[stock]
                 if amount >= limit:
                     amount = limit
@@ -230,7 +242,6 @@ class TimeTravel:
         priority1 = ['buy-open', 'sell-open']
         priority2 = ['buy-low', 'sell-high']
         priority3 = ['buy-close', 'sell-close']
-
         ordered_trans = []
         for trans in self.daily_transactions:
             if trans[3] in priority1:
@@ -284,24 +295,20 @@ class TimeTravel:
     def day_processing(self):
         # Find dataset's min/max day
         day_min = min(self.data['Date'])
-        day_min = '1972-01-01'
-
-        date_max = max(self.data['Date'])
-        # date_max = '1972-02-01'
+        day_max = max(self.data['Date'])
         day = day_min
-
         # Initialize Stats
         self.portfolio.append(self.income)
         self.balance.append(self.income)
         self.dates.append(day_min)
 
         # Iterate through all days
-        while day <= date_max and self.N <= self.N_limit:
+        while day <= day_max and self.N <= self.N_limit:
 
             # If first day of year make yearly actions
-            if (day.split('-')[1] == '01' and day.split('-')[2] == '01') or\
+            if (day.day == 1 and day.month == 1) or\
                     day == day_min:
-                year = day.split('-')[0]
+                year = day.year
                 self.year_processing(year, day)
 
             # Initialize lists
@@ -323,10 +330,7 @@ class TimeTravel:
                 self.stats(day)
 
             # Move to next day
-            day = datetime.strptime(day, '%Y-%m-%d')
             day = day + timedelta(1)
-            # print(day)
-            day = str(day.date())
 
     def stats(self, day):
         # Find owned stocks and amount
@@ -358,7 +362,7 @@ class TimeTravel:
         months = mdates.MonthLocator()  # every month
         years_fmt = mdates.DateFormatter('%Y')
 
-        x = [datetime.strptime(x, '%Y-%m-%d') for x in self.dates]
+        x = self.dates
         y1 = self.balance
         y2 = self.portfolio
         labels = ['Portfolio', 'Balance']
@@ -373,6 +377,7 @@ class TimeTravel:
         ax.xaxis.set_major_formatter(years_fmt)
         ax.xaxis.set_minor_locator(months)
         ax.format_xdata = mdates.DateFormatter('%Y-%m-%d')
+        plt.yscale("log")
         fig.autofmt_xdate()
 
         ax.set(ylabel='Dollars')
