@@ -1,7 +1,7 @@
 ''' Time Travel Problem '''
 
 import os
-from datetime import datetime, timedelta
+from datetime import timedelta
 import sys
 
 import matplotlib.pyplot as plt
@@ -18,6 +18,7 @@ class TimeTravel:
         self.file = size + '.txt'
         if size == 'small':
             self.N_limit = 1000
+
             self.intraday_par = 1.15
             self.interday_par = 1.25
         else:
